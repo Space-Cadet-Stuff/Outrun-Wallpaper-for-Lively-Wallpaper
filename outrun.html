@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Wallpaper</title> 
+  <title>Outrun Wallpaper</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: 
-        linear-gradient(to bottom, 
-          transparent 0%, 
-          transparent 50%, 
-          rgba(138, 43, 226, 0.3) 50%, 
+      background:
+        linear-gradient(to bottom,
+          transparent 0%,
+          transparent 50%,
+          rgba(138, 43, 226, 0.3) 50%,
           rgba(138, 43, 226, 0.6) 100%
         ),
         radial-gradient(circle at 50% 50%, #4c4d82 0%, #0b0d2a 80%);
@@ -29,86 +29,98 @@
   <script>
     const canvas = document.getElementById('outrunCanvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
 
-    window.addEventListener('resize', () => {
+    let audioIntensity = 0;
+    let baseGlowMultiplier = 1;
+    const maxGlowMultiplier = 10;
+
+    const gridSpacing = 40;
+    const totalLines = 102;
+    const stars = [];
+    const starCount = 200;
+    let rotationAngle = 0;
+    const rotationSpeed = 0.0002;
+
+    const horizontalLines = [];
+    const maxLines = 20;
+    const minLines = 5;
+    const lineSpawnInterval = 400;
+    const baseSpeed = 0.5;
+    const acceleration = 0.15;
+
+    function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       stars.length = 0;
       generateStars();
-    });
+    }
 
-    const gridSpacing = 40;
-    const totalLines = 51;
-    const maxFanOffset = canvas.width * 2.5;
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function livelyAudioListener(audioArray) {
+      if (!audioArray || audioArray.length === 0) {
+        audioIntensity *= 0.95;
+        baseGlowMultiplier = 1 + Math.pow(audioIntensity, 0.3) * (maxGlowMultiplier - 1);
+        return;
+      }
+
+      let maxVal = Math.max(...audioArray);
+      let avgVal = audioArray.reduce((a, b) => a + b, 0) / audioArray.length;
+
+      audioIntensity = Math.min((maxVal * 0.8 + avgVal * 0.2) * 3, 1);
+      baseGlowMultiplier = 1 + Math.pow(audioIntensity, 0.5) * (maxGlowMultiplier - 1);
+    }
+
+    function getMidY() {
+      return canvas.height / 2;
+    }
 
     function drawGrid() {
       const midY = getMidY();
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'white';
-      ctx.shadowColor = '#ff00ff';
-      ctx.shadowBlur = 80;
 
       for (let i = 0; i < totalLines; i++) {
         const t = i / (totalLines - 1);
         const adjustedT = 0.5 - 0.5 * Math.cos(Math.PI * t);
         const xMid = adjustedT * canvas.width;
+        const offsetX = ((xMid - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
 
-        const distanceFromCenter = (xMid - canvas.width / 2) / (canvas.width / 2);
-        const offsetX = distanceFromCenter * maxFanOffset;
+        const shadowLayers = [
+          { blur: 200, color: '#ff00ff' },
+          { blur: 100, color: '#ff44ff' },
+          { blur: 50, color: '#ffffff' }
+        ];
 
-        ctx.shadowBlur = 120;
-        ctx.shadowColor = '#ff00ff';
-        ctx.beginPath();
-        ctx.moveTo(xMid, midY);
-        ctx.lineTo(xMid + offsetX, canvas.height);
-        ctx.stroke();
-
-        ctx.shadowBlur = 60;
-        ctx.shadowColor = '#ff44ff';
-        ctx.beginPath();
-        ctx.moveTo(xMid, midY);
-        ctx.lineTo(xMid + offsetX, canvas.height);
-        ctx.stroke();
-        
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ffffff';
-        ctx.beginPath();
-        ctx.moveTo(xMid, midY);
-        ctx.lineTo(xMid + offsetX, canvas.height);
-        ctx.stroke();
+        shadowLayers.forEach(({ blur, color }) => {
+          ctx.shadowBlur = blur * baseGlowMultiplier;
+          ctx.shadowColor = color;
+          ctx.beginPath();
+          ctx.moveTo(xMid, midY);
+          ctx.lineTo(xMid + offsetX, canvas.height);
+          ctx.stroke();
+        });
       }
 
-      ctx.lineWidth = 3;
-      ctx.shadowBlur = 120;
-      ctx.shadowColor = '#00ffff';
-      ctx.beginPath();
-      ctx.moveTo(0, midY);
-      ctx.lineTo(canvas.width, midY);
-      ctx.stroke();
+      const horizontalShadowLayers = [
+        { blur: 200, color: '#00ffff' },
+        { blur: 100, color: '#4444ff' },
+        { blur: 50, color: '#ffffff' }
+      ];
 
-      ctx.shadowBlur = 60;
-      ctx.shadowColor = '#4444ff';
-      ctx.beginPath();
-      ctx.moveTo(0, midY);
-      ctx.lineTo(canvas.width, midY);
-      ctx.stroke();
-
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(0, midY);
-      ctx.lineTo(canvas.width, midY);
-      ctx.stroke();
+      horizontalShadowLayers.forEach(({ blur, color }) => {
+        ctx.shadowBlur = blur * baseGlowMultiplier;
+        ctx.shadowColor = color;
+        ctx.strokeStyle = 'white';
+        ctx.beginPath();
+        ctx.moveTo(0, midY);
+        ctx.lineTo(canvas.width, midY);
+        ctx.stroke();
+      });
 
       ctx.shadowBlur = 0;
     }
-
-    const stars = [];
-    const starCount = 200;
-    let rotationAngle = 0;
-    const rotationSpeed = 0.0002;
 
     function generateStars() {
       for (let i = 0; i < starCount; i++) {
@@ -124,61 +136,50 @@
     }
 
     function drawStars() {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+
       ctx.save();
-      
+
       stars.forEach(star => {
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        
-        const translatedX = star.x - centerX;
-        const translatedY = star.y - centerY;
-        
-        const rotatedX = translatedX * Math.cos(rotationAngle) - translatedY * Math.sin(rotationAngle);
-        const rotatedY = translatedX * Math.sin(rotationAngle) + translatedY * Math.cos(rotationAngle);
-        
-        const finalX = rotatedX + centerX;
-        const finalY = rotatedY + centerY;
-        
-        if (finalY <= canvas.height / 2) {
+        const dx = star.x - centerX;
+        const dy = star.y - centerY;
+        const rotX = dx * Math.cos(rotationAngle) - dy * Math.sin(rotationAngle);
+        const rotY = dx * Math.sin(rotationAngle) + dy * Math.cos(rotationAngle);
+        const finalX = rotX + centerX;
+        const finalY = rotY + centerY;
+
+        if (finalY <= centerY) {
           const twinkle = Math.sin(Date.now() * star.twinkleSpeed + star.twinklePhase) * 0.15;
           const opacity = Math.max(0.1, star.baseOpacity + twinkle);
-          
-          ctx.shadowBlur = 25;
-          ctx.shadowColor = `rgba(255, 255, 255, ${opacity * 0.8})`;
-          ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-          ctx.beginPath();
-          ctx.arc(finalX, finalY, star.size, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.shadowBlur = 15;
-          ctx.shadowColor = `rgba(200, 230, 255, ${opacity * 0.6})`;
-          ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.9})`;
-          ctx.beginPath();
-          ctx.arc(finalX, finalY, star.size * 0.8, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = `rgba(255, 255, 255, ${opacity})`;
-          ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-          ctx.beginPath();
-          ctx.arc(finalX, finalY, star.size * 0.5, 0, Math.PI * 2);
-          ctx.fill();
+
+          const layers = [
+            { blur: 25, radius: star.size, alpha: 0.8 },
+            { blur: 15, radius: star.size * 0.8, alpha: 0.6 },
+            { blur: 8, radius: star.size * 0.5, alpha: 1.0 }
+          ];
+
+          layers.forEach(({ blur, radius, alpha }) => {
+            ctx.shadowBlur = blur;
+            ctx.shadowColor = `rgba(255, 255, 255, ${opacity * alpha})`;
+            ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, radius, 0, Math.PI * 2);
+            ctx.fill();
+          });
         }
       });
-      
+
       ctx.restore();
     }
-
-    generateStars();
 
     function drawSun() {
       const midY = getMidY();
       const sunRadius = canvas.width * 0.12;
       const sunX = canvas.width / 2;
-      const sunY = midY - sunRadius * 0.3 - sunRadius * 0.125;
+      const sunY = midY - sunRadius * 0.425;
 
       ctx.save();
-      
       ctx.beginPath();
       ctx.rect(0, 0, canvas.width, midY);
       ctx.clip();
@@ -194,7 +195,7 @@
       ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.shadowBlur = 50;
+      ctx.shadowBlur = 100 * baseGlowMultiplier;
       ctx.shadowColor = '#ff6b9d';
       ctx.beginPath();
       ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
@@ -204,51 +205,30 @@
       ctx.shadowBlur = 0;
     }
 
-    const horizontalLines = [];
-    const maxLines = 20;
-    const minLines = 5;
-    const lineSpawnInterval = 200;
-    const baseSpeed = 1;
-    const acceleration = 0.1;
-
-    function getMidY() {
-      return canvas.height / 2;
-    }
-
     function spawnHorizontalLine() {
-      if (horizontalLines.length < maxLines) {
-        horizontalLines.push({
-          y: getMidY(),
-          speed: baseSpeed
-        });
-      }
+      horizontalLines.push({ y: getMidY(), speed: baseSpeed });
     }
 
     function updateHorizontalLines() {
-      const currentMidY = getMidY();
-      
-      for (let i = 0; i < horizontalLines.length; i++) {
-        const line = horizontalLines[i];
-        
-        const distanceFromHorizon = (line.y - currentMidY) / (canvas.height - currentMidY);
-        
-        const speedMultiplier = 1 + Math.pow(distanceFromHorizon, 2) * 3;
-        
+      const midY = getMidY();
+      horizontalLines.forEach(line => {
+        const relativeDistance = (line.y - midY) / (canvas.height - midY);
+        const speedMultiplier = 1 + Math.pow(relativeDistance, 2) * 3;
         line.y += line.speed * speedMultiplier;
         line.speed += acceleration;
-      }
+      });
 
+      // Remove lines offscreen
       for (let i = horizontalLines.length - 1; i >= 0; i--) {
-        if (horizontalLines[i].y > canvas.height) {
-          horizontalLines.splice(i, 1);
-        }
+        if (horizontalLines[i].y > canvas.height) horizontalLines.splice(i, 1);
       }
     }
 
     function drawHorizontalLines() {
       ctx.lineWidth = 2;
+      ctx.strokeStyle = 'white';
       ctx.shadowColor = '#ff00ff';
-      ctx.shadowBlur = 40;
+      ctx.shadowBlur = 40 * baseGlowMultiplier;
 
       horizontalLines.forEach(line => {
         ctx.beginPath();
@@ -261,14 +241,11 @@
     }
 
     setInterval(() => {
-      if (horizontalLines.length < minLines || horizontalLines.length < maxLines) {
-        spawnHorizontalLine();
-      }
+      if (horizontalLines.length < maxLines) spawnHorizontalLine();
     }, lineSpawnInterval);
 
     function animate() {
       rotationAngle += rotationSpeed;
-      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawStars();
       drawSun();
