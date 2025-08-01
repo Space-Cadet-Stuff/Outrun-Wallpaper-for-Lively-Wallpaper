@@ -246,12 +246,11 @@
     }
 
     function animate(timestamp) {
-      // Detect if animation was paused (large time gap)
+
       if (lastFrameTime > 0 && timestamp - lastFrameTime > 100) {
         wasPaused = true;
       }
-      
-      // Reset spawn timing after pause to prevent clustering
+
       if (wasPaused) {
         lastSpawn = timestamp;
         wasPaused = false;
