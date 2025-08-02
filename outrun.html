@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Outrun Wallpaper (Optimized)</title>
+  <title>Outrun Wallpaper</title>
   <style>
     @font-face {
       font-family: 'OutrunFuture';
@@ -100,7 +100,6 @@
       ctx.rect(0, 0, canvas.width, midY);
       ctx.clip();
 
-      // Add glow to the sun
       ctx.shadowColor = '#ff6b9d';
       ctx.shadowBlur = 60 * glow;
 
@@ -131,6 +130,169 @@
       gradient.addColorStop(1, 'rgba(30, 15, 25, 1)');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, midY, canvas.width, canvas.height - midY);
+    }
+
+    function drawRoad() {
+      const midY = canvas.height / 2;
+      const centerIndex = Math.floor(totalLines / 2);
+      const leftRoadIndex = centerIndex - 1;
+      const rightRoadIndex = centerIndex + 1;
+      const leftT = leftRoadIndex / (totalLines - 1);
+      const rightT = rightRoadIndex / (totalLines - 1);
+      const leftAdjustedT = 0.5 - 0.5 * Math.cos(Math.PI * leftT);
+      const rightAdjustedT = 0.5 - 0.5 * Math.cos(Math.PI * rightT);
+      const leftRoadHorizon = leftAdjustedT * canvas.width;
+      const rightRoadHorizon = rightAdjustedT * canvas.width;
+      const leftOffsetX = ((leftRoadHorizon - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
+      const rightOffsetX = ((rightRoadHorizon - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
+      const leftRoadBottom = leftRoadHorizon + leftOffsetX;
+      const rightRoadBottom = rightRoadHorizon + rightOffsetX;
+      const gradient = ctx.createLinearGradient(0, midY, 0, canvas.height);
+      gradient.addColorStop(0, 'rgba(45, 50, 70, 1)');
+      gradient.addColorStop(1, 'rgba(25, 30, 45, 1)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(leftRoadHorizon, midY);
+      ctx.lineTo(rightRoadHorizon, midY);
+      ctx.lineTo(rightRoadBottom, canvas.height);
+      ctx.lineTo(leftRoadBottom, canvas.height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
+      ctx.shadowBlur = 25 * glow;
+      ctx.shadowColor = '#00ffff';
+      ctx.beginPath();
+      ctx.moveTo(leftRoadHorizon, midY);
+      ctx.lineTo(leftRoadBottom, canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rightRoadHorizon, midY);
+      ctx.lineTo(rightRoadBottom, canvas.height);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+      ctx.shadowBlur = 15 * glow;
+      ctx.beginPath();
+      ctx.moveTo(leftRoadHorizon, midY);
+      ctx.lineTo(leftRoadBottom, canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rightRoadHorizon, midY);
+      ctx.lineTo(rightRoadBottom, canvas.height);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#00ffff';
+      ctx.beginPath();
+      ctx.moveTo(leftRoadHorizon, midY);
+      ctx.lineTo(leftRoadBottom, canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rightRoadHorizon, midY);
+      ctx.lineTo(rightRoadBottom, canvas.height);
+      ctx.stroke();
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(leftRoadHorizon, midY);
+      ctx.lineTo(rightRoadHorizon, midY);
+      ctx.lineTo(rightRoadBottom, canvas.height);
+      ctx.lineTo(leftRoadBottom, canvas.height);
+      ctx.closePath();
+      ctx.clip();
+      ctx.scale(1, -1);
+      ctx.translate(0, -canvas.height);
+      ctx.globalAlpha = 0.3;
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(rotationAngle * 1);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      stars.forEach(star => {
+        if (star.y < midY) {
+          star.twinklePhase += star.twinkleSpeed;
+          const twinkle = Math.sin(star.twinklePhase) * 0.5 + 0.5;
+          const opacity = star.baseOpacity * (0.2 + 0.8 * twinkle);
+          ctx.beginPath();
+          ctx.globalAlpha = opacity * 0.3;
+          ctx.fillStyle = '#ffffff';
+          ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(1, -1);
+      ctx.translate(0, -canvas.height);
+      ctx.globalAlpha = 0.2;
+      const sunX = canvas.width / 2;
+      const sunRadius = canvas.width * 0.12;
+      const sunY = midY - sunRadius * 0.425;
+      if (sunY < midY) {
+        ctx.shadowColor = '#ff6b9d';
+        ctx.shadowBlur = 30;
+        const gradient = ctx.createLinearGradient(sunX, sunY - sunRadius, sunX, sunY + sunRadius);
+        gradient.addColorStop(0, '#ffff00');
+        gradient.addColorStop(0.3, '#ff8c00');
+        gradient.addColorStop(0.7, '#ff1493');
+        gradient.addColorStop(1, '#ff6b9d');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      const centerX = canvas.width / 2;
+      const lineSpacing = 8;
+      const leftCenterIndex = Math.floor(totalLines / 2) - 0.025;
+      const rightCenterIndex = Math.floor(totalLines / 2) + 0.025;
+      const leftCenterT = leftCenterIndex / (totalLines - 1);
+      const leftCenterAdjustedT = 0.5 - 0.5 * Math.cos(Math.PI * leftCenterT);
+      const leftCenterHorizon = leftCenterAdjustedT * canvas.width;
+      const leftCenterOffsetX = ((leftCenterHorizon - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
+      const rightCenterT = rightCenterIndex / (totalLines - 1);
+      const rightCenterAdjustedT = 0.5 - 0.5 * Math.cos(Math.PI * rightCenterT);
+      const rightCenterHorizon = rightCenterAdjustedT * canvas.width;
+      const rightCenterOffsetX = ((rightCenterHorizon - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
+      for (let y = midY; y < canvas.height; y += 2) {
+        const yProgress = (y - midY) / (canvas.height - midY);
+        const scalingFactor = Math.pow(yProgress, 0.5);
+        const lineWidth = 0.8 + 5 * scalingFactor;
+        const leftLineX = leftCenterHorizon + leftCenterOffsetX * yProgress;
+        ctx.lineWidth = lineWidth + 2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.shadowBlur = 8 * glow;
+        ctx.shadowColor = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(leftLineX, y);
+        ctx.lineTo(leftLineX, Math.min(y + 2, canvas.height));
+        ctx.stroke();
+        ctx.lineWidth = 0.5 + 3.5 * scalingFactor;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(leftLineX, y);
+        ctx.lineTo(leftLineX, Math.min(y + 2, canvas.height));
+        ctx.stroke();
+      }
+      for (let y = midY; y < canvas.height; y += 2) {
+        const yProgress = (y - midY) / (canvas.height - midY);
+        const scalingFactor = Math.pow(yProgress, 0.5);
+        const lineWidth = 0.8 + 5 * scalingFactor;
+        const rightLineX = rightCenterHorizon + rightCenterOffsetX * yProgress;
+        ctx.lineWidth = lineWidth + 2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.shadowBlur = 8 * glow;
+        ctx.shadowColor = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(rightLineX, y);
+        ctx.lineTo(rightLineX, Math.min(y + 2, canvas.height));
+        ctx.stroke();
+        ctx.lineWidth = 0.5 + 3.5 * scalingFactor;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(rightLineX, y);
+        ctx.lineTo(rightLineX, Math.min(y + 2, canvas.height));
+        ctx.stroke();
+      }
     }
 
     function drawGrid() {
@@ -235,7 +397,6 @@
       ctx.lineTo(canvas.width, midY);
       ctx.stroke();
 
-      // Core white line
       ctx.lineWidth = 1.5;
       ctx.shadowBlur = 0;
       ctx.strokeStyle = '#ffffff';
@@ -257,7 +418,9 @@
       }
       
       if (!lastSpawn) lastSpawn = timestamp;
+      
       const delta = timestamp - lastSpawn;
+      
       if (delta > lineSpawnInterval && horizontalLines.length < 15) {
         spawnHorizontalLine();
         lastSpawn = timestamp;
@@ -274,6 +437,7 @@
       drawHorizon();
       updateHorizontalLines();
       drawHorizontalLines();
+      drawRoad();
 
       requestAnimationFrame(animate);
     }
