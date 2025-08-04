@@ -46,11 +46,15 @@
     let lastSpawn = 0;
     let lastFrameTime = 0;
     let wasPaused = false;
+    let mountainsGenerated = false;
+    let mountainPaths = [];
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       stars.length = 0;
+      mountainsGenerated = false;
+      mountainPaths = [];
       generateStars();
     }
 
@@ -406,6 +410,322 @@
       ctx.stroke();
     }
 
+    function createLayer(layerY, maxVariationX, maxVariationY, pointCount, layerCount, width, xPos, yPos) {
+      const layerPoints = [];
+      const spacing = width / pointCount;
+
+      for (let i = 0; i < pointCount; i++) {
+        let baseX = i * spacing;
+        let x = baseX + spacing * (Math.random() * maxVariationX - maxVariationX / 2) + xPos;
+        if (x < xPos) {
+          x = xPos + (Math.random() * maxVariationX/2);
+        }
+        let y = layerY + (Math.random() * maxVariationY - maxVariationY / 2) + yPos;
+        layerPoints.push({ x, y });
+      }
+
+      return layerPoints;
+    }
+
+    function createPoints(layerCount, pointyness, width, height, x, y) {
+      const points = [];
+      
+      let cumulativeHeight = 0;
+      const layerHeights = [];
+      
+      for (let i = 0; i < layerCount; i++) {
+        const spacingFactor = (layerCount - i) / layerCount;
+        const layerHeight = (height / layerCount) * spacingFactor * 2;
+        layerHeights.push(layerHeight);
+        cumulativeHeight += layerHeight;
+      }
+      
+      const scale = height / cumulativeHeight;
+      let currentY = 0;
+      
+      for (let i = 0; i < layerCount; i++) {
+        const layerY = currentY;
+        const maxVariationY = Math.min(pointyness * (height / layerCount) * (layerCount - i-1), height/layerCount-1);
+        const maxVariationX = 0.5;
+        const pointCount = i + 1;
+        const layerPoints = createLayer(layerY, maxVariationX, maxVariationY, pointCount, layerCount, width, x, y);
+        points.push(layerPoints);
+        
+        currentY += layerHeights[i] * scale;
+      }
+      
+      return points;
+    }
+
+    function createMountainHalf(layerCount, chaosFactor, size, x, y, flip = false, isTall, heightAdjust = 1.0, startRgb, endRgb) {
+      const width = size;
+      const height = size * heightAdjust * (isTall ? 1.2 : 1.0);
+      let adjustedY = y;
+      if (isTall) {
+        adjustedY -= size * heightAdjust * 0.2;
+      }
+      adjustedY -= heightAdjust - 1.0;
+      
+      let points = createPoints(layerCount, chaosFactor, width, height, 0, adjustedY);
+      
+      if (flip) {
+        points = points.map(layer => 
+          layer.map(point => ({
+            x: x + width - point.x,
+            y: point.y
+          }))
+        );
+      } else {
+        points = points.map(layer => 
+          layer.map(point => ({
+            x: point.x + x,
+            y: point.y
+          }))
+        );
+      }
+
+      const triangles = [];
+      const lines = [];
+      
+      for (let i = 0; i < points.length - 1; i++) {
+        const layerPoints = points[i];
+        const nextLayerPoints = points[i + 1];
+
+        for (let j = 0; j < Math.min(layerPoints.length, nextLayerPoints.length); j++) {
+          const currentPoint = layerPoints[j];
+          const nextLayerPoint1 = nextLayerPoints[Math.min(j, nextLayerPoints.length - 1)];
+          const nextLayerPoint2 = nextLayerPoints[Math.min(j + 1, nextLayerPoints.length - 1)];
+          
+          const gradientFactor = 1 - (i / (points.length - 1));
+          
+          const r = Math.round(startRgb.r + (gradientFactor * (endRgb.r - startRgb.r)));
+          const g = Math.round(startRgb.g + (gradientFactor * (endRgb.g - startRgb.g)));
+          const b = Math.round(startRgb.b + (gradientFactor * (endRgb.b - startRgb.b)));
+          
+          triangles.push({
+            points: [currentPoint, nextLayerPoint1, nextLayerPoint2],
+            color: `rgb(${r}, ${g}, ${b})`
+          });
+
+          lines.push(
+            { x1: currentPoint.x, y1: currentPoint.y, x2: nextLayerPoint1.x, y2: nextLayerPoint1.y },
+            { x1: currentPoint.x, y1: currentPoint.y, x2: nextLayerPoint2.x, y2: nextLayerPoint2.y }
+          );
+        }
+        
+        for (let j = 0; j < layerPoints.length - 1; j++) {
+          if (j < nextLayerPoints.length) {
+            const currentPoint1 = layerPoints[j];
+            const currentPoint2 = layerPoints[j + 1];
+            const nextLayerPoint = nextLayerPoints[Math.min(j + 1, nextLayerPoints.length - 1)];
+            
+            const gradientFactor = 1 - (i / (points.length - 1));
+            
+            const rOffset = 10;
+            const gOffset = 5;
+            const bOffset = -5;
+            let r = Math.round(startRgb.r + rOffset + (gradientFactor * (endRgb.r - startRgb.r)));
+            let g = Math.round(startRgb.g + gOffset + (gradientFactor * (endRgb.g - startRgb.g)));
+            let b = Math.round(startRgb.b + bOffset + (gradientFactor * (endRgb.b - startRgb.b)));
+            
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+            
+            triangles.push({
+              points: [currentPoint1, currentPoint2, nextLayerPoint],
+              color: `rgb(${r}, ${g}, ${b})`
+            });
+
+            lines.push(
+              { x1: currentPoint1.x, y1: currentPoint1.y, x2: currentPoint2.x, y2: currentPoint2.y },
+              { x1: currentPoint1.x, y1: currentPoint1.y, x2: nextLayerPoint.x, y2: nextLayerPoint.y },
+              { x1: currentPoint2.x, y1: currentPoint2.y, x2: nextLayerPoint.x, y2: nextLayerPoint.y }
+            );
+          }
+        }
+
+        for (let j = 0; j < layerPoints.length - 1; j++) {
+          const maxLen = Math.min(layerPoints.length - 1, i);
+          if (j < maxLen) {
+            const currentPoint = layerPoints[j];
+            const nextPoint = layerPoints[j + 1];
+            lines.push({ x1: currentPoint.x, y1: currentPoint.y, x2: nextPoint.x, y2: nextPoint.y });
+          }
+        }
+      }
+
+      return { triangles, edgePoints: points.map(layer => layer[0]), lines };
+    }
+
+    function generateMountains() {
+      if (mountainsGenerated) return;
+      
+      const midY = canvas.height / 2;
+      mountainPaths = [];
+
+      const gradientUno = { startR: 5, startG: 5, startB: 15, endR: 15, endG: 15, endB: 35 };
+      const gradientDuo = { startR: 15, startG: 15, startB: 35, endR: 25, endG: 25, endB: 55 };
+      const gradientTre = { startR: 25, startG: 25, startB: 55, endR: 35, endG: 35, endB: 75 };
+
+      const scale = canvas.width / 3000;
+      
+      const centerX = canvas.width / 2;
+      const mountainConfigs = [
+        { layers: 6, chaos: 42, size: 350 * scale, x: centerX - 1350 * scale - 250 * scale, y: midY - 300 * scale, tall: 'left', height: 1, gradient: gradientUno },
+        { layers: 6, chaos: 42, size: 350 * scale, x: centerX + 900 * scale, y: midY - 300 * scale, tall: 'right', height: 1, gradient: gradientUno },
+        { layers: 5, chaos: 42, size: 600 * scale, x: centerX - 950 * scale - 280 * scale, y: midY - 200 * scale, tall: 'left', height: 0.4, gradient: gradientDuo },
+        { layers: 5, chaos: 42, size: 600 * scale, x: centerX + 0 * scale, y: midY - 200 * scale, tall: 'right', height: 0.4, gradient: gradientDuo },
+        { layers: 4, chaos: 42, size: 1000 * scale, x: centerX - 1150 * scale - 650 * scale, y: midY - 100 * scale, tall: 'left', height: 0.15, gradient: gradientTre },
+        { layers: 4, chaos: 42, size: 1000 * scale, x: centerX - 200 * scale, y: midY - 100 * scale, tall: 'right', height: 0.15, gradient: gradientTre }
+      ];
+
+      mountainConfigs.forEach(config => {
+        const { layers, chaos, size, x, y, tall, height, gradient } = config;
+        
+        let isLeftTall = false;
+        let isRightTall = false;
+        if (tall === 'left') {
+          isLeftTall = true;
+        } else if (tall === 'right') {
+          isRightTall = true;
+        }
+
+        const startRgb = { r: gradient.startR, g: gradient.startG, b: gradient.startB };
+        const endRgb = { r: gradient.endR, g: gradient.endG, b: gradient.endB };
+
+        const rightHalf = createMountainHalf(layers, chaos, size, x, y, true, isLeftTall, height, startRgb, endRgb);
+        const leftHalf = createMountainHalf(layers, chaos, size, x + size + 20 * scale, y, false, isRightTall, height, startRgb, endRgb);
+
+        mountainPaths.push({ 
+          leftTriangles: rightHalf.triangles, 
+          rightTriangles: leftHalf.triangles,
+          leftEdges: rightHalf.edgePoints,
+          rightEdges: leftHalf.edgePoints,
+          leftLines: rightHalf.lines,
+          rightLines: leftHalf.lines,
+          gradient: gradient,
+          scale: scale
+        });
+      });
+
+      mountainsGenerated = true;
+    }
+
+    function drawMountains() {
+      if (!mountainsGenerated) {
+        generateMountains();
+      }
+
+      ctx.save();
+      
+      const midY = canvas.height / 2;
+      ctx.beginPath();
+      ctx.rect(0, 0, canvas.width, midY);
+      ctx.clip();
+
+      mountainPaths.forEach(mountain => {
+        ctx.shadowBlur = 0;
+        
+        mountain.leftTriangles.forEach(triangle => {
+          ctx.fillStyle = triangle.color;
+          ctx.beginPath();
+          ctx.moveTo(triangle.points[0].x, triangle.points[0].y);
+          ctx.lineTo(triangle.points[1].x, triangle.points[1].y);
+          ctx.lineTo(triangle.points[2].x, triangle.points[2].y);
+          ctx.closePath();
+          ctx.fill();
+        });
+
+        mountain.rightTriangles.forEach(triangle => {
+          ctx.fillStyle = triangle.color;
+          ctx.beginPath();
+          ctx.moveTo(triangle.points[0].x, triangle.points[0].y);
+          ctx.lineTo(triangle.points[1].x, triangle.points[1].y);
+          ctx.lineTo(triangle.points[2].x, triangle.points[2].y);
+          ctx.closePath();
+          ctx.fill();
+        });
+
+        for (let i = 0; i < mountain.leftEdges.length - 1; i++) {
+          const rightPoint1 = mountain.leftEdges[i];
+          const rightPoint2 = mountain.leftEdges[i + 1];
+          const leftPoint1 = mountain.rightEdges[Math.min(i, mountain.rightEdges.length - 1)];
+          const leftPoint2 = mountain.rightEdges[Math.min(i + 1, mountain.rightEdges.length - 1)];
+          
+          const gradientFactor = 1 - (i / (mountain.leftEdges.length - 1));
+          const rOffset = 15;
+          const gOffset = 10;
+          const bOffset = 5;
+          let r = Math.round(mountain.gradient.startR + rOffset + (gradientFactor * (mountain.gradient.endR - mountain.gradient.startR)));
+          let g = Math.round(mountain.gradient.startG + gOffset + (gradientFactor * (mountain.gradient.endG - mountain.gradient.startG)));
+          let b = Math.round(mountain.gradient.startB + bOffset + (gradientFactor * (mountain.gradient.endB - mountain.gradient.startB)));
+          
+          r = Math.max(0, Math.min(255, r));
+          g = Math.max(0, Math.min(255, g));
+          b = Math.max(0, Math.min(255, b));
+          
+          const fillColor = `rgb(${r}, ${g}, ${b})`;
+          
+          ctx.fillStyle = fillColor;
+          ctx.beginPath();
+          ctx.moveTo(rightPoint1.x, rightPoint1.y);
+          ctx.lineTo(leftPoint1.x, leftPoint1.y);
+          ctx.lineTo(rightPoint2.x, rightPoint2.y);
+          ctx.closePath();
+          ctx.fill();
+          
+          ctx.beginPath();
+          ctx.moveTo(leftPoint1.x, leftPoint1.y);
+          ctx.lineTo(leftPoint2.x, leftPoint2.y);
+          ctx.lineTo(rightPoint2.x, rightPoint2.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        ctx.strokeStyle = '#00FFFF';
+        ctx.lineWidth = 1;
+        ctx.shadowColor = '#00FFFF';
+        ctx.shadowBlur = 3;
+
+        if (mountain.leftLines) {
+          mountain.leftLines.forEach(line => {
+            ctx.beginPath();
+            ctx.moveTo(line.x1, line.y1);
+            ctx.lineTo(line.x2, line.y2);
+            ctx.stroke();
+          });
+        }
+
+        if (mountain.rightLines) {
+          mountain.rightLines.forEach(line => {
+            ctx.beginPath();
+            ctx.moveTo(line.x1, line.y1);
+            ctx.lineTo(line.x2, line.y2);
+            ctx.stroke();
+          });
+        }
+
+        mountain.leftEdges.forEach((point, index) => {
+          const nextPoint = mountain.rightEdges[Math.min(index, mountain.rightEdges.length - 1)];
+          ctx.beginPath();
+          ctx.moveTo(point.x, point.y);
+          ctx.lineTo(nextPoint.x, nextPoint.y);
+          ctx.stroke();
+        });
+
+        mountain.leftEdges.forEach((point, index) => {
+          const nextPoint = mountain.rightEdges[Math.min(index + 1, mountain.rightEdges.length - 1)];
+          ctx.beginPath();
+          ctx.moveTo(point.x, point.y);
+          ctx.lineTo(nextPoint.x, nextPoint.y);
+          ctx.stroke();
+        });
+      });
+
+      ctx.restore();
+    }
+
     function animate(timestamp) {
 
       if (lastFrameTime > 0 && timestamp - lastFrameTime > 100) {
@@ -432,6 +752,7 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawStars();
       drawSun();
+      drawMountains();
       drawGroundBackground();
       drawGrid();
       drawHorizon();
