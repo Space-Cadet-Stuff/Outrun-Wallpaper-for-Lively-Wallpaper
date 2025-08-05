@@ -1,0 +1,14 @@
+{
+  "AppVersion": "0.1.9.0",
+  "Title": "Vaporwave Road",
+  "Thumbnail": "preview.gif",
+  "Preview": "preview.gif",
+  "Desc": "Neon grid with procedurally generated mountains",
+  "Author": "Space-Cadet-Stuff",
+  "License": null,
+  "Contact": "https://github.com/Space-Cadet-Stuff/Outrun-Wallpaper-for-Lively-Wallpaper",
+  "Type": 1,
+  "FileName": "outrun.html",
+  "Arguments": null,
+  "IsAbsolutePath": false
+}
