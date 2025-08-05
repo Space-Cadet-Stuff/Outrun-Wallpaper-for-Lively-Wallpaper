@@ -25,11 +25,60 @@
     canvas {
       display: block;
     }
+    canvas::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: 
+        linear-gradient(
+          transparent 50%, 
+          rgba(0, 0, 0, 0.08) 50%
+        );
+      background-size: 100% 3px;
+      animation: scanlines 0.15s linear infinite;
+    }
+    @keyframes scanlines {
+      0% { transform: translateY(-3px); }
+      100% { transform: translateY(3px); }
+    }
+    .crt-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: 
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 1.5px,
+          rgba(0, 0, 0, 0.06) 1.5px,
+          rgba(0, 0, 0, 0.06) 3px
+        );
+      z-index: 1000;
+      animation: crtFlicker 4s ease-in-out infinite alternate, crtScanMove 2s linear infinite;
+    }
+    @keyframes crtFlicker {
+      0% { opacity: 0.95; }
+      25% { opacity: 1; }
+      50% { opacity: 0.98; }
+      75% { opacity: 1; }
+      100% { opacity: 0.96; }
+    }
+    @keyframes crtScanMove {
+      0% { transform: translateY(0px); }
+      100% { transform: translateY(6px); }
+    }
   </style>
 </head>
 <body>
   <canvas id="outrunCanvas"></canvas>
-
+  <div class="crt-overlay"></div>
   <script>
     const canvas = document.getElementById('outrunCanvas');
     const ctx = canvas.getContext('2d');
@@ -37,34 +86,31 @@
     let rotationAngle = 0;
     const stars = [];
     const starCount = 100;
+    const shootingStars = [];
     const totalLines = 93;
     const horizontalLines = [];
     const lineSpawnInterval = 250
     const baseSpeed = 0.1;
     const acceleration = 0.05;
-
     let lastSpawn = 0;
     let lastFrameTime = 0;
     let wasPaused = false;
     let mountainsGenerated = false;
     let mountainPaths = [];
     let sunWithCutsCanvas = null;
-    
+    let lastShootingStarSpawn = 0;
     let groundGradientCache = null;
     let sunGradientCache = null;
     let roadGradientCache = null;
-
     function createSunWithCuts() {
       const midY = canvas.height / 2;
       const sunRadius = canvas.width * 0.12;
       const sunX = canvas.width / 2;
       const sunY = midY - sunRadius * 0.425;
-
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
       const tempCtx = tempCanvas.getContext('2d');
-      
       tempCtx.shadowColor = '#ff6b9d';
       tempCtx.shadowBlur = 30;
       const gradient = tempCtx.createLinearGradient(sunX, sunY - sunRadius, sunX, sunY + sunRadius);
@@ -76,47 +122,37 @@
       tempCtx.beginPath();
       tempCtx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
       tempCtx.fill();
-
       tempCtx.globalCompositeOperation = 'destination-out';
       const numCuts = 12;
       const lowerHalfStart = sunY;
       const lowerHalfEnd = sunY + sunRadius;
-      
       for (let i = 0; i < numCuts; i++) {
         const progress = i / (numCuts - 1);
         const cutY = lowerHalfStart + (lowerHalfEnd - lowerHalfStart) * progress;
-        
         const minWidth = 3;
         const maxWidth = 40;
         const cutWidth = minWidth + (maxWidth - minWidth) * progress * progress;
-        
         const distanceFromCenter = Math.abs(cutY - sunY);
         const maxDistanceForCut = sunRadius * 0.95;
-        
         if (distanceFromCenter <= maxDistanceForCut) {
           const horizontalRadius = Math.sqrt(sunRadius * sunRadius - distanceFromCenter * distanceFromCenter);
           const cutLeft = sunX - horizontalRadius;
           const cutRight = sunX + horizontalRadius;
-          
           tempCtx.shadowColor = '#ff6b9d';
           tempCtx.shadowBlur = 15;
           tempCtx.fillStyle = 'black';
           tempCtx.fillRect(cutLeft, cutY - cutWidth / 2, cutRight - cutLeft, cutWidth);
         }
       }
-      
       return tempCanvas;
     }
-
     function drawSunWithCuts(shadowBlur = 60) {
       const midY = canvas.height / 2;
       const sunRadius = canvas.width * 0.12;
       const sunX = canvas.width / 2;
       const sunY = midY - sunRadius * 0.425;
-
       ctx.shadowColor = '#ff6b9d';
       ctx.shadowBlur = shadowBlur * glow;
-
       if (!sunGradientCache) {
         sunGradientCache = ctx.createLinearGradient(sunX, sunY - sunRadius, sunX, sunY + sunRadius);
         sunGradientCache.addColorStop(0, '#ffff00');
@@ -124,44 +160,35 @@
         sunGradientCache.addColorStop(0.7, '#ff1493');
         sunGradientCache.addColorStop(1, '#ff6b9d');
       }
-      
       ctx.fillStyle = sunGradientCache;
       ctx.beginPath();
       ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
       ctx.fill();
-
       ctx.globalCompositeOperation = 'destination-out';
       const numCuts = 12;
       const lowerHalfStart = sunY;
       const lowerHalfEnd = sunY + sunRadius;
-      
       for (let i = 0; i < numCuts; i++) {
         const progress = i / (numCuts - 1);
         const cutY = lowerHalfStart + (lowerHalfEnd - lowerHalfStart) * progress;
-        
         const minWidth = 3;
         const maxWidth = 40;
         const cutWidth = minWidth + (maxWidth - minWidth) * progress * progress;
-        
         const distanceFromCenter = Math.abs(cutY - sunY);
         const maxDistanceForCut = sunRadius * 0.95;
-        
         if (distanceFromCenter <= maxDistanceForCut) {
           const horizontalRadius = Math.sqrt(sunRadius * sunRadius - distanceFromCenter * distanceFromCenter);
           const cutLeft = sunX - horizontalRadius;
           const cutRight = sunX + horizontalRadius;
-          
           ctx.shadowColor = '#ff6b9d';
           ctx.shadowBlur = 30 * glow;
           ctx.fillStyle = 'black';
           ctx.fillRect(cutLeft, cutY - cutWidth / 2, cutRight - cutLeft, cutWidth);
         }
       }
-      
       ctx.globalCompositeOperation = 'source-over';
       ctx.shadowBlur = 0;
     }
-
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -169,17 +196,14 @@
       mountainsGenerated = false;
       mountainPaths = [];
       sunWithCutsCanvas = null;
-      
+      shootingStars.length = 0;
       groundGradientCache = null;
       sunGradientCache = null;
       roadGradientCache = null;
-      
       generateStars();
     }
-
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
-
     function generateStars() {
       for (let i = 0; i < starCount; i++) {
         stars.push({
@@ -192,46 +216,118 @@
         });
       }
     }
-
     function drawStars() {
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.rotate(rotationAngle * 1);
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
-      
       ctx.fillStyle = '#ffffff';
-      
       stars.forEach(star => {
         star.twinklePhase += star.twinkleSpeed;
         const twinkle = Math.sin(star.twinklePhase) * 0.5 + 0.5;
         const opacity = star.baseOpacity * (0.2 + 0.8 * twinkle);
-        
         ctx.globalAlpha = opacity;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
       });
-      
       ctx.restore();
       ctx.globalAlpha = 1;
     }
-
+    function spawnShootingStar() {
+      const midY = canvas.height / 2;
+      const startX = Math.random() * canvas.width * 0.3;
+      const startY = Math.random() * midY * 0.8;
+      const endX = startX + canvas.width * (0.4 + Math.random() * 0.4);
+      const endY = startY + (Math.random() * 100 + 50);
+      const speed = 3 + Math.random() * 4;
+      const trailLength = 15 + Math.random() * 10;
+      shootingStars.push({
+        startX: startX,
+        startY: startY,
+        endX: endX,
+        endY: endY,
+        currentX: startX,
+        currentY: startY,
+        speed: speed,
+        progress: 0,
+        trail: [],
+        trailLength: trailLength,
+        brightness: 0.8 + Math.random() * 0.2,
+        fadeIn: 0,
+        fadeOut: 1,
+        fadeInDuration: 0.15,
+        fadeOutDuration: 0.25
+      });
+    }
+    function updateShootingStars() {
+      for (let i = shootingStars.length - 1; i >= 0; i--) {
+        const star = shootingStars[i];
+        star.progress += star.speed / 100;
+        if (star.progress < star.fadeInDuration) {
+          star.fadeIn = star.progress / star.fadeInDuration;
+        } else {
+          star.fadeIn = 1;
+        }
+        if (star.progress > (1 - star.fadeOutDuration)) {
+          const fadeOutProgress = (star.progress - (1 - star.fadeOutDuration)) / star.fadeOutDuration;
+          star.fadeOut = 1 - fadeOutProgress;
+        } else {
+          star.fadeOut = 1;
+        }
+        if (star.progress >= 1) {
+          shootingStars.splice(i, 1);
+          continue;
+        }
+        star.currentX = star.startX + (star.endX - star.startX) * star.progress;
+        star.currentY = star.startY + (star.endY - star.startY) * star.progress;
+        star.trail.push({ x: star.currentX, y: star.currentY });
+        if (star.trail.length > star.trailLength) {
+          star.trail.shift();
+        }
+      }
+    }
+    function drawShootingStars() {
+      shootingStars.forEach(star => {
+        if (star.trail.length < 2) return;
+        const overallFade = star.fadeIn * star.fadeOut;
+        ctx.save();
+        for (let i = 1; i < star.trail.length; i++) {
+          const trailProgress = i / star.trail.length;
+          const opacity = trailProgress * star.brightness * 0.8 * overallFade;
+          const width = trailProgress * 3;
+          ctx.globalAlpha = opacity;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = width;
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 8 * glow;
+          ctx.beginPath();
+          ctx.moveTo(star.trail[i - 1].x, star.trail[i - 1].y);
+          ctx.lineTo(star.trail[i].x, star.trail[i].y);
+          ctx.stroke();
+        }
+        const headPos = star.trail[star.trail.length - 1];
+        ctx.globalAlpha = star.brightness * overallFade;
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 15 * glow;
+        ctx.beginPath();
+        ctx.arc(headPos.x, headPos.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
     function drawSun() {
       const midY = canvas.height / 2;
-
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, 0, canvas.width, midY);
       ctx.clip();
-
       drawSunWithCuts(60);
-
       ctx.restore();
     }
-
     function drawGroundBackground() {
       const midY = canvas.height / 2;
-      
       if (!groundGradientCache) {
         groundGradientCache = ctx.createRadialGradient(
           canvas.width / 2, midY, 0,
@@ -242,11 +338,9 @@
         groundGradientCache.addColorStop(0.7, 'rgba(45, 20, 35, 1)');
         groundGradientCache.addColorStop(1, 'rgba(30, 15, 25, 1)');
       }
-      
       ctx.fillStyle = groundGradientCache;
       ctx.fillRect(0, midY, canvas.width, canvas.height - midY);
     }
-
     function drawRoad() {
       const midY = canvas.height / 2;
       const centerIndex = Math.floor(totalLines / 2);
@@ -262,13 +356,11 @@
       const rightOffsetX = ((rightRoadHorizon - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
       const leftRoadBottom = leftRoadHorizon + leftOffsetX;
       const rightRoadBottom = rightRoadHorizon + rightOffsetX;
-      
       if (!roadGradientCache) {
         roadGradientCache = ctx.createLinearGradient(0, midY, 0, canvas.height);
         roadGradientCache.addColorStop(0, 'rgba(45, 50, 70, 1)');
         roadGradientCache.addColorStop(1, 'rgba(25, 30, 45, 1)');
       }
-      
       ctx.fillStyle = roadGradientCache;
       ctx.beginPath();
       ctx.moveTo(leftRoadHorizon, midY);
@@ -348,7 +440,6 @@
         if (!sunWithCutsCanvas) {
           sunWithCutsCanvas = createSunWithCuts();
         }
-        
         ctx.globalAlpha = 0.2;
         ctx.drawImage(sunWithCutsCanvas, 0, 0);
       }
@@ -363,129 +454,105 @@
       const rightCenterAdjustedT = 0.5 - 0.5 * Math.cos(Math.PI * rightCenterT);
       const rightCenterHorizon = rightCenterAdjustedT * canvas.width;
       const rightCenterOffsetX = ((rightCenterHorizon - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
-      
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.shadowBlur = 8 * glow;
       ctx.shadowColor = '#ffffff';
-      
       ctx.beginPath();
       for (let y = midY; y < canvas.height; y += 2) {
         const yProgress = (y - midY) / (canvas.height - midY);
         const scalingFactor = Math.pow(yProgress, 0.5);
         const lineWidth = 0.8 + 5 * scalingFactor;
         const leftLineX = leftCenterHorizon + leftCenterOffsetX * yProgress;
-        
         ctx.lineWidth = lineWidth + 2;
         ctx.moveTo(leftLineX, y);
         ctx.lineTo(leftLineX, Math.min(y + 2, canvas.height));
       }
       ctx.stroke();
-      
       ctx.shadowBlur = 0;
       ctx.strokeStyle = '#ffffff';
-      
       ctx.beginPath();
       for (let y = midY; y < canvas.height; y += 2) {
         const yProgress = (y - midY) / (canvas.height - midY);
         const scalingFactor = Math.pow(yProgress, 0.5);
         const leftLineX = leftCenterHorizon + leftCenterOffsetX * yProgress;
-        
         ctx.lineWidth = 0.5 + 3.5 * scalingFactor;
         ctx.moveTo(leftLineX, y);
         ctx.lineTo(leftLineX, Math.min(y + 2, canvas.height));
       }
       ctx.stroke();
-      
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.shadowBlur = 8 * glow;
       ctx.shadowColor = '#ffffff';
-      
       ctx.beginPath();
       for (let y = midY; y < canvas.height; y += 2) {
         const yProgress = (y - midY) / (canvas.height - midY);
         const scalingFactor = Math.pow(yProgress, 0.5);
         const lineWidth = 0.8 + 5 * scalingFactor;
         const rightLineX = rightCenterHorizon + rightCenterOffsetX * yProgress;
-        
         ctx.lineWidth = lineWidth + 2;
         ctx.moveTo(rightLineX, y);
         ctx.lineTo(rightLineX, Math.min(y + 2, canvas.height));
       }
       ctx.stroke();
-      
       ctx.shadowBlur = 0;
       ctx.strokeStyle = '#ffffff';
-      
       ctx.beginPath();
       for (let y = midY; y < canvas.height; y += 2) {
         const yProgress = (y - midY) / (canvas.height - midY);
         const scalingFactor = Math.pow(yProgress, 0.5);
         const rightLineX = rightCenterHorizon + rightCenterOffsetX * yProgress;
-        
         ctx.lineWidth = 0.5 + 3.5 * scalingFactor;
         ctx.moveTo(rightLineX, y);
         ctx.lineTo(rightLineX, Math.min(y + 2, canvas.height));
       }
       ctx.stroke();
     }
-
     function drawGrid() {
       const midY = canvas.height / 2;
-
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(255, 0, 255, 0.08)';
       ctx.shadowBlur = 20 * glow;
       ctx.shadowColor = '#ff00ff';
-      
       ctx.beginPath();
       for (let i = 0; i < totalLines; i++) {
         const t = i / (totalLines - 1);
         const adjustedT = 0.5 - 0.5 * Math.cos(Math.PI * t);
         const xMid = adjustedT * canvas.width;
         const offsetX = ((xMid - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
-        
         ctx.moveTo(xMid, midY);
         ctx.lineTo(xMid + offsetX, canvas.height);
       }
       ctx.stroke();
-
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(255, 0, 255, 0.15)';
       ctx.shadowBlur = 10 * glow;
-      
       ctx.beginPath();
       for (let i = 0; i < totalLines; i++) {
         const t = i / (totalLines - 1);
         const adjustedT = 0.5 - 0.5 * Math.cos(Math.PI * t);
         const xMid = adjustedT * canvas.width;
         const offsetX = ((xMid - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
-        
         ctx.moveTo(xMid, midY);
         ctx.lineTo(xMid + offsetX, canvas.height);
       }
       ctx.stroke();
-
       ctx.lineWidth = 1.5;
       ctx.shadowBlur = 0;
       ctx.strokeStyle = 'white';
-      
       ctx.beginPath();
       for (let i = 0; i < totalLines; i++) {
         const t = i / (totalLines - 1);
         const adjustedT = 0.5 - 0.5 * Math.cos(Math.PI * t);
         const xMid = adjustedT * canvas.width;
         const offsetX = ((xMid - canvas.width / 2) / (canvas.width / 2)) * canvas.width * 5;
-        
         ctx.moveTo(xMid, midY);
         ctx.lineTo(xMid + offsetX, canvas.height);
       }
       ctx.stroke();
     }
-
     function spawnHorizontalLine() {
       horizontalLines.push({ y: canvas.height / 2, speed: baseSpeed });
     }
-
     function updateHorizontalLines() {
       const midY = canvas.height / 2;
       horizontalLines.forEach(line => {
@@ -498,37 +565,30 @@
         if (horizontalLines[i].y > canvas.height) horizontalLines.splice(i, 1);
       }
     }
-
     function drawHorizontalLines() {
       if (horizontalLines.length === 0) return;
-
       ctx.lineWidth = 6;
       ctx.strokeStyle = 'rgba(255, 0, 255, 0.1)';
       ctx.shadowBlur = 40 * glow;
       ctx.shadowColor = '#ff00ff';
-      
       ctx.beginPath();
       horizontalLines.forEach(line => {
         ctx.moveTo(0, line.y);
         ctx.lineTo(canvas.width, line.y);
       });
       ctx.stroke();
-
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(255, 0, 255, 0.25)';
       ctx.shadowBlur = 20 * glow;
-      
       ctx.beginPath();
       horizontalLines.forEach(line => {
         ctx.moveTo(0, line.y);
         ctx.lineTo(canvas.width, line.y);
       });
       ctx.stroke();
-
       ctx.lineWidth = 1.5;
       ctx.shadowBlur = 0;
       ctx.strokeStyle = '#ffffff';
-      
       ctx.beginPath();
       horizontalLines.forEach(line => {
         ctx.moveTo(0, line.y);
@@ -536,10 +596,8 @@
       });
       ctx.stroke();
     }
-
     function drawHorizon() {
       const midY = canvas.height / 2;
-
       ctx.lineWidth = 8;
       ctx.strokeStyle = 'rgba(255, 0, 255, 0.12)';
       ctx.shadowBlur = 30 * glow;
@@ -548,7 +606,6 @@
       ctx.moveTo(0, midY);
       ctx.lineTo(canvas.width, midY);
       ctx.stroke();
-
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(255, 0, 255, 0.25)';
       ctx.shadowBlur = 15 * glow;
@@ -556,7 +613,6 @@
       ctx.moveTo(0, midY);
       ctx.lineTo(canvas.width, midY);
       ctx.stroke();
-
       ctx.lineWidth = 1.5;
       ctx.shadowBlur = 0;
       ctx.strokeStyle = '#ffffff';
@@ -565,11 +621,9 @@
       ctx.lineTo(canvas.width, midY);
       ctx.stroke();
     }
-
     function createLayer(layerY, maxVariationX, maxVariationY, pointCount, layerCount, width, xPos, yPos) {
       const layerPoints = [];
       const spacing = width / pointCount;
-
       for (let i = 0; i < pointCount; i++) {
         let baseX = i * spacing;
         let x = baseX + spacing * (Math.random() * maxVariationX - maxVariationX / 2) + xPos;
@@ -579,26 +633,20 @@
         let y = layerY + (Math.random() * maxVariationY - maxVariationY / 2) + yPos;
         layerPoints.push({ x, y });
       }
-
       return layerPoints;
     }
-
     function createPoints(layerCount, pointyness, width, height, x, y) {
       const points = [];
-      
       let cumulativeHeight = 0;
       const layerHeights = [];
-      
       for (let i = 0; i < layerCount; i++) {
         const spacingFactor = (layerCount - i) / layerCount;
         const layerHeight = (height / layerCount) * spacingFactor * 2;
         layerHeights.push(layerHeight);
         cumulativeHeight += layerHeight;
       }
-      
       const scale = height / cumulativeHeight;
       let currentY = 0;
-      
       for (let i = 0; i < layerCount; i++) {
         const layerY = currentY;
         const maxVariationY = Math.min(pointyness * (height / layerCount) * (layerCount - i-1), height/layerCount-1);
@@ -606,13 +654,10 @@
         const pointCount = i + 1;
         const layerPoints = createLayer(layerY, maxVariationX, maxVariationY, pointCount, layerCount, width, x, y);
         points.push(layerPoints);
-        
         currentY += layerHeights[i] * scale;
       }
-      
       return points;
     }
-
     function createMountainHalf(layerCount, chaosFactor, size, x, y, flip = false, isTall, heightAdjust = 1.0, startRgb, endRgb) {
       const width = size;
       const height = size * heightAdjust * (isTall ? 1.2 : 1.0);
@@ -621,9 +666,7 @@
         adjustedY -= size * heightAdjust * 0.2;
       }
       adjustedY -= heightAdjust - 1.0;
-      
       let points = createPoints(layerCount, chaosFactor, width, height, 0, adjustedY);
-      
       if (flip) {
         points = points.map(layer => 
           layer.map(point => ({
@@ -639,60 +682,47 @@
           }))
         );
       }
-
       const triangles = [];
       const lines = [];
-      
       for (let i = 0; i < points.length - 1; i++) {
         const layerPoints = points[i];
         const nextLayerPoints = points[i + 1];
-
         for (let j = 0; j < Math.min(layerPoints.length, nextLayerPoints.length); j++) {
           const currentPoint = layerPoints[j];
           const nextLayerPoint1 = nextLayerPoints[Math.min(j, nextLayerPoints.length - 1)];
           const nextLayerPoint2 = nextLayerPoints[Math.min(j + 1, nextLayerPoints.length - 1)];
-          
           const gradientFactor = 1 - (i / (points.length - 1));
-          
           const r = Math.round(startRgb.r + (gradientFactor * (endRgb.r - startRgb.r)));
           const g = Math.round(startRgb.g + (gradientFactor * (endRgb.g - startRgb.g)));
           const b = Math.round(startRgb.b + (gradientFactor * (endRgb.b - startRgb.b)));
-          
           triangles.push({
             points: [currentPoint, nextLayerPoint1, nextLayerPoint2],
             color: `rgb(${r}, ${g}, ${b})`
           });
-
           lines.push(
             { x1: currentPoint.x, y1: currentPoint.y, x2: nextLayerPoint1.x, y2: nextLayerPoint1.y },
             { x1: currentPoint.x, y1: currentPoint.y, x2: nextLayerPoint2.x, y2: nextLayerPoint2.y }
           );
         }
-        
         for (let j = 0; j < layerPoints.length - 1; j++) {
           if (j < nextLayerPoints.length) {
             const currentPoint1 = layerPoints[j];
             const currentPoint2 = layerPoints[j + 1];
             const nextLayerPoint = nextLayerPoints[Math.min(j + 1, nextLayerPoints.length - 1)];
-            
             const gradientFactor = 1 - (i / (points.length - 1));
-            
             const rOffset = 10;
             const gOffset = 5;
             const bOffset = -5;
             let r = Math.round(startRgb.r + rOffset + (gradientFactor * (endRgb.r - startRgb.r)));
             let g = Math.round(startRgb.g + gOffset + (gradientFactor * (endRgb.g - startRgb.g)));
             let b = Math.round(startRgb.b + bOffset + (gradientFactor * (endRgb.b - startRgb.b)));
-            
             r = Math.max(0, Math.min(255, r));
             g = Math.max(0, Math.min(255, g));
             b = Math.max(0, Math.min(255, b));
-            
             triangles.push({
               points: [currentPoint1, currentPoint2, nextLayerPoint],
               color: `rgb(${r}, ${g}, ${b})`
             });
-
             lines.push(
               { x1: currentPoint1.x, y1: currentPoint1.y, x2: currentPoint2.x, y2: currentPoint2.y },
               { x1: currentPoint1.x, y1: currentPoint1.y, x2: nextLayerPoint.x, y2: nextLayerPoint.y },
@@ -700,7 +730,6 @@
             );
           }
         }
-
         for (let j = 0; j < layerPoints.length - 1; j++) {
           const maxLen = Math.min(layerPoints.length - 1, i);
           if (j < maxLen) {
@@ -710,22 +739,16 @@
           }
         }
       }
-
       return { triangles, edgePoints: points.map(layer => layer[0]), lines };
     }
-
     function generateMountains() {
       if (mountainsGenerated) return;
-      
       const midY = canvas.height / 2;
       mountainPaths = [];
-
       const gradientUno = { startR: 5, startG: 5, startB: 15, endR: 15, endG: 15, endB: 35 };
       const gradientDuo = { startR: 15, startG: 15, startB: 35, endR: 25, endG: 25, endB: 55 };
       const gradientTre = { startR: 25, startG: 25, startB: 55, endR: 35, endG: 35, endB: 75 };
-
       const scale = canvas.width / 3000;
-      
       const centerX = canvas.width / 2;
       const mountainConfigs = [
         { layers: 6, chaos: 42, size: 350 * scale, x: centerX - 1350 * scale - 250 * scale, y: midY - 300 * scale, tall: 'left', height: 1, gradient: gradientUno },
@@ -735,10 +758,8 @@
         { layers: 4, chaos: 42, size: 1000 * scale, x: centerX - 1150 * scale - 650 * scale, y: midY - 100 * scale, tall: 'left', height: 0.15, gradient: gradientTre },
         { layers: 4, chaos: 42, size: 1000 * scale, x: centerX - 200 * scale, y: midY - 100 * scale, tall: 'right', height: 0.15, gradient: gradientTre }
       ];
-
       mountainConfigs.forEach(config => {
         const { layers, chaos, size, x, y, tall, height, gradient } = config;
-        
         let isLeftTall = false;
         let isRightTall = false;
         if (tall === 'left') {
@@ -746,13 +767,10 @@
         } else if (tall === 'right') {
           isRightTall = true;
         }
-
         const startRgb = { r: gradient.startR, g: gradient.startG, b: gradient.startB };
         const endRgb = { r: gradient.endR, g: gradient.endG, b: gradient.endB };
-
         const rightHalf = createMountainHalf(layers, chaos, size, x, y, true, isLeftTall, height, startRgb, endRgb);
         const leftHalf = createMountainHalf(layers, chaos, size, x + size + 20 * scale, y, false, isRightTall, height, startRgb, endRgb);
-
         mountainPaths.push({ 
           leftTriangles: rightHalf.triangles, 
           rightTriangles: leftHalf.triangles,
@@ -764,25 +782,19 @@
           scale: scale
         });
       });
-
       mountainsGenerated = true;
     }
-
     function drawMountains() {
       if (!mountainsGenerated) {
         generateMountains();
       }
-
       ctx.save();
-      
       const midY = canvas.height / 2;
       ctx.beginPath();
       ctx.rect(0, 0, canvas.width, midY);
       ctx.clip();
-
       mountainPaths.forEach(mountain => {
         ctx.shadowBlur = 0;
-        
         mountain.leftTriangles.forEach(triangle => {
           ctx.fillStyle = triangle.color;
           ctx.beginPath();
@@ -792,7 +804,6 @@
           ctx.closePath();
           ctx.fill();
         });
-
         mountain.rightTriangles.forEach(triangle => {
           ctx.fillStyle = triangle.color;
           ctx.beginPath();
@@ -802,13 +813,11 @@
           ctx.closePath();
           ctx.fill();
         });
-
         for (let i = 0; i < mountain.leftEdges.length - 1; i++) {
           const rightPoint1 = mountain.leftEdges[i];
           const rightPoint2 = mountain.leftEdges[i + 1];
           const leftPoint1 = mountain.rightEdges[Math.min(i, mountain.rightEdges.length - 1)];
           const leftPoint2 = mountain.rightEdges[Math.min(i + 1, mountain.rightEdges.length - 1)];
-          
           const gradientFactor = 1 - (i / (mountain.leftEdges.length - 1));
           const rOffset = 15;
           const gOffset = 10;
@@ -816,13 +825,10 @@
           let r = Math.round(mountain.gradient.startR + rOffset + (gradientFactor * (mountain.gradient.endR - mountain.gradient.startR)));
           let g = Math.round(mountain.gradient.startG + gOffset + (gradientFactor * (mountain.gradient.endG - mountain.gradient.startG)));
           let b = Math.round(mountain.gradient.startB + bOffset + (gradientFactor * (mountain.gradient.endB - mountain.gradient.startB)));
-          
           r = Math.max(0, Math.min(255, r));
           g = Math.max(0, Math.min(255, g));
           b = Math.max(0, Math.min(255, b));
-          
           const fillColor = `rgb(${r}, ${g}, ${b})`;
-          
           ctx.fillStyle = fillColor;
           ctx.beginPath();
           ctx.moveTo(rightPoint1.x, rightPoint1.y);
@@ -830,7 +836,6 @@
           ctx.lineTo(rightPoint2.x, rightPoint2.y);
           ctx.closePath();
           ctx.fill();
-          
           ctx.beginPath();
           ctx.moveTo(leftPoint1.x, leftPoint1.y);
           ctx.lineTo(leftPoint2.x, leftPoint2.y);
@@ -838,12 +843,10 @@
           ctx.closePath();
           ctx.fill();
         }
-
         ctx.strokeStyle = '#00FFFF';
         ctx.lineWidth = 1;
         ctx.shadowColor = '#00FFFF';
         ctx.shadowBlur = 3;
-
         if (mountain.leftLines) {
           mountain.leftLines.forEach(line => {
             ctx.beginPath();
@@ -852,7 +855,6 @@
             ctx.stroke();
           });
         }
-
         if (mountain.rightLines) {
           mountain.rightLines.forEach(line => {
             ctx.beginPath();
@@ -861,7 +863,6 @@
             ctx.stroke();
           });
         }
-
         mountain.leftEdges.forEach((point, index) => {
           const nextPoint = mountain.rightEdges[Math.min(index, mountain.rightEdges.length - 1)];
           ctx.beginPath();
@@ -869,7 +870,6 @@
           ctx.lineTo(nextPoint.x, nextPoint.y);
           ctx.stroke();
         });
-
         mountain.leftEdges.forEach((point, index) => {
           const nextPoint = mountain.rightEdges[Math.min(index + 1, mountain.rightEdges.length - 1)];
           ctx.beginPath();
@@ -878,47 +878,46 @@
           ctx.stroke();
         });
       });
-
       ctx.restore();
     }
-
     function animate(timestamp) {
-
       if (lastFrameTime > 0 && timestamp - lastFrameTime > 100) {
         wasPaused = true;
       }
-
       if (wasPaused) {
         lastSpawn = timestamp;
+        lastShootingStarSpawn = timestamp;
         wasPaused = false;
       }
-      
       if (!lastSpawn) lastSpawn = timestamp;
-      
+      if (!lastShootingStarSpawn) lastShootingStarSpawn = timestamp;
       const delta = timestamp - lastSpawn;
-      
+      const shootingStarDelta = timestamp - lastShootingStarSpawn;
       if (delta > lineSpawnInterval && horizontalLines.length < 15) {
         spawnHorizontalLine();
         lastSpawn = timestamp;
       }
-
+      const shootingStarInterval = 3000 + Math.random() * 4000;
+      if (shootingStarDelta > shootingStarInterval) {
+        spawnShootingStar();
+        lastShootingStarSpawn = timestamp;
+      }
       rotationAngle += 0.0002;
       lastFrameTime = timestamp;
-
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawStars();
+      drawShootingStars();
       drawSun();
       drawMountains();
       drawGroundBackground();
       drawGrid();
       drawHorizon();
       updateHorizontalLines();
+      updateShootingStars();
       drawHorizontalLines();
       drawRoad();
-
       requestAnimationFrame(animate);
     }
-
     animate();
   </script>
 </body>
